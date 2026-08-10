@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Tab</title>
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --search-bg: #ffffff;
+      --search-border: #e0e0e5;
+      --search-shadow: 0 8px 28px -4px rgba(0,0,0,0.07), 0 3px 8px -2px rgba(0,0,0,0.03);
+      --search-focus-border: #b0b0b8;
+      --search-focus-shadow: 0 12px 32px -4px rgba(0,0,0,0.10), 0 0 0 3.5px rgba(0,0,0,0.05);
+      --text: #18181b;
+      --placeholder: #b0b0b8;
+      --cat-fill: #1c1c1e;
+      --cat-inner-ear: rgba(255,255,255,0.42);
+      --eye-bg: #ffffff;
+      --pupil-fill: #1c1c1e;
+      --cat-detail: #ffffff;
+      --cat-stroke-col: #ffffff;
+      --zzz-fill: #9e9ea8;
+      --bubble-bg: #1c1c1e;
+      --bubble-text: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0a0a0c;
+        --search-bg: #1c1c1e;
+        --search-border: #2e2e32;
+        --search-shadow: 0 8px 32px -4px rgba(0,0,0,0.7), 0 3px 8px -2px rgba(0,0,0,0.5);
+        --search-focus-border: #4a4a50;
+        --search-focus-shadow: 0 12px 36px -4px rgba(0,0,0,0.8), 0 0 0 3.5px rgba(255,255,255,0.06);
+        --text: #f2f2f7;
+        --placeholder: #636368;
+        --cat-fill: #f0f0f5;
+        --cat-inner-ear: rgba(0,0,0,0.22);
+        --eye-bg: #1c1c1e;
+        --pupil-fill: #f0f0f5;
+        --cat-detail: #1c1c1e;
+        --cat-stroke-col: #1c1c1e;
+        --zzz-fill: #9e9ea8;
+        --bubble-bg: #f0f0f5;
+        --bubble-text: #1c1c1e;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+      transition: background 0.3s;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 560px;
+      padding: 0 20px;
+    }
+
+    /* ── Cat Wrapper ── */
+    .cat-wrapper {
+      width: 200px;
+      height: 80px;
+      position: relative;
+      margin-bottom: -14px;
+      z-index: 2;
+      cursor: pointer;
+      transform: translateX(var(--walk-x, 0px));
+      transform-origin: center bottom;
+      transition: transform 1.6s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+    .cat-svg { width: 100%; height: 100%; overflow: visible; }
+
+    /* ── Clean & Symmetrical Thought Bubble ── */
+    .miau-bubble {
+      position: absolute;
+      top: -44px; left: 50%;
+      transform: translateX(-50%) scale(0.5);
+      background: var(--bubble-bg);
+      color: var(--bubble-text);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.2px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      opacity: 0; pointer-events: none;
+      white-space: nowrap;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 6px 20px -2px rgba(0,0,0,0.14);
+      z-index: 10;
+      transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .miau-bubble .thought-tail {
+      position: absolute;
+      top: 100%; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center;
+      margin-top: 4px; gap: 3px;
+      pointer-events: none;
+    }
+    .miau-bubble .thought-dot {
+      background: var(--bubble-bg);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .miau-bubble .dot-1 { width: 7px; height: 7px; }
+    .miau-bubble .dot-2 { width: 4.5px; height: 4.5px; }
+    .miau-bubble .dot-3 { width: 3px; height: 3px; }
+
+    .miau-bubble.show {
+      opacity: 1;
+      transform: translateX(-50%) scale(1);
+      animation: comicPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards, comicFloat 3.2s ease-in-out infinite 0.3s;
+    }
+
+    @keyframes comicPop {
+      0%   { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.5) rotate(-3deg); }
+      70%  { transform: translateX(-50%) translateY(-3px) scale(1.05) rotate(1deg); }
+      100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1) rotate(0deg); }
+    }
+    @keyframes comicFloat {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50%      { transform: translateX(-50%) translateY(-3px); }
+    }
+
+
+    /* ── SVG Shorthand Classes ── */
+    .cf  { fill: var(--cat-fill); }          /* cat body color fill */
+    .cd  { fill: var(--cat-detail); }        /* detail/contrast fill */
+    .ie  { fill: var(--cat-inner-ear); }     /* inner ear overlay */
+    .eb  { fill: var(--eye-bg); }            /* eye sclera */
+    .ep  { fill: var(--pupil-fill); }        /* pupil fill */
+    /* stroke helpers */
+    .cs  { stroke: var(--cat-stroke-col); fill: none; }   /* body-on-decoration stroke */
+    .cfs { stroke: var(--cat-fill); fill: none; }         /* eye-on-sclera stroke */
+
+    /* ── Whiskers ── */
+    #whiskers line {
+      stroke: var(--cat-stroke-col);
+      stroke-width: 0.9; stroke-linecap: round;
+      opacity: 0.38;
+      transition: opacity 0.4s ease;
+    }
+
+    /* ── Cat Root: breathing ── */
+    #cat-root {
+      transform-origin: 100px 53px;
+      animation: breathe 2.5s ease-in-out infinite;
+    }
+    @keyframes breathe {
+      0%,100% { transform: scaleY(1); }
+      50%      { transform: scaleY(1.019); }
+    }
+
+    /* ── Head Assembly ── */
+    #catHead {
+      transform-origin: 100px 37px;
+      transform: rotate(var(--head-tilt, 0deg));
+      transition: transform 0.13s ease-out;
+    }
+
+    /* ── Tail ── */
+    #tail {
+      transform-origin: 39px 46px;
+      animation: tailWag 2.6s ease-in-out infinite;
+    }
+    @keyframes tailWag {
+      0%,100% { transform: rotate(-10deg); }
+      50%     { transform: rotate(10deg); }
+    }
+
+    /* ── Eye Layers ── */
+    .eye-normal-grp { transition: opacity 0.22s ease; }
+    .eye-eyelid-fill { transform: translateY(-9px); transition: transform 0.34s cubic-bezier(0.34,1.56,0.64,1); }
+    .eye-lid-line    { opacity: 0; transition: transform 0.34s cubic-bezier(0.34,1.56,0.64,1), opacity 0.22s ease; }
+    .pupil-grp       { transition: transform 0.09s ease-out; transform: translate(var(--eye-x,0px),var(--eye-y,0px)); }
+    .eye-happy       { opacity: 0; transition: opacity 0.22s ease; }
+    .eye-sleep       { opacity: 0; transition: opacity 0.22s ease; }
+    .eye-surprised   { opacity: 0; transition: opacity 0.22s ease; }
+
+    /* ── Mouth Layers ── */
+    .mouth-n { transition: opacity 0.22s ease; }
+    .mouth-h, .mouth-s, .mouth-o { opacity: 0; transition: opacity 0.22s ease; }
+
+    /* ── Arms ── */
+    #arm-l { transform-origin: 65px 48px; }
+    #arm-r { transform-origin: 135px 48px; }
+    #arms  { transition: transform 0.45s cubic-bezier(0.34,1.56,0.64,1); }
+
+    /* ══════════════════════════════════
+       STATE MACHINE
+    ══════════════════════════════════ */
+
+    /* Ear base anchored at (58, 25) and (142, 25) deep inside body rect */
+    #ear-l { transform-origin: 58px 25px; }
+    #ear-r { transform-origin: 142px 25px; }
+
+    /* — AWAKE: alert, eyes wide open — */
+    .state-awake #ear-l { animation: earTwitchL 0.42s cubic-bezier(0.34,1.56,0.64,1); }
+    .state-awake #ear-r { animation: earTwitchR 0.42s cubic-bezier(0.34,1.56,0.64,1) 0.07s; }
+    @keyframes earTwitchL {
+      0%,100% { transform: rotate(0deg); }
+      30%     { transform: rotate(-14deg); }
+      70%     { transform: rotate(5deg); }
+    }
+    @keyframes earTwitchR {
+      0%,100% { transform: rotate(0deg); }
+      30%     { transform: rotate(14deg); }
+      70%     { transform: rotate(-5deg); }
+    }
+    .state-awake .eye-eyelid-fill { transform: translateY(-9px); }
+    .state-awake .eye-lid-line    { opacity: 0; }
+    .state-awake #whiskers line   { opacity: 0.65; }
+
+    /* — TYPING: focused, half-lidded, rhythmic kneading paws — */
+    .state-typing .eye-eyelid-fill { transform: translateY(2px); }
+    .state-typing .eye-lid-line    { transform: translateY(1.5px); opacity: 1; }
+    .state-typing #arm-l { animation: kneadL 0.75s ease-in-out infinite; }
+    .state-typing #arm-r { animation: kneadR 0.75s ease-in-out infinite 0.375s; }
+    @keyframes kneadL {
+      0%,100% { transform: translateY(0) rotate(0deg); }
+      50%     { transform: translateY(-2.5px) rotate(-3deg); }
+    }
+    @keyframes kneadR {
+      0%,100% { transform: translateY(-2.5px) rotate(3deg); }
+      50%     { transform: translateY(0) rotate(0deg); }
+    }
+    .state-typing #whiskers line { opacity: 0.55; }
+
+    /* — HAPPY: UwU face, body squish — */
+    .state-happy .eye-normal-grp { opacity: 0; }
+    .state-happy .eye-lid-line   { opacity: 0; }
+    .state-happy .eye-happy      { opacity: 1; }
+    .state-happy .mouth-n        { opacity: 0; }
+    .state-happy .mouth-h        { opacity: 1; }
+    .state-happy #cat-root       { animation: petSquish 0.48s cubic-bezier(0.34,1.56,0.64,1); }
+    .state-happy #ear-l          { animation: petEarL 0.48s ease-in-out; }
+    .state-happy #ear-r          { animation: petEarR 0.48s ease-in-out; }
+    .state-happy #whiskers line  { opacity: 0.80; }
+    @keyframes petSquish {
+      0%   { transform: scale(1,1); }
+      35%  { transform: scale(1.09,0.87); }
+      65%  { transform: scale(0.97,1.05); }
+      100% { transform: scale(1,1); }
+    }
+    @keyframes petEarL {
+      0%,100% { transform: rotate(0deg); }
+      40%     { transform: rotate(-15deg); }
+    }
+    @keyframes petEarR {
+      0%,100% { transform: rotate(0deg); }
+      40%     { transform: rotate(15deg); }
+    }
+
+    /* — PLAYING: swat paw, alert eyes — */
+    .state-playing #arm-r         { animation: swatPaw 0.75s cubic-bezier(0.34,1.56,0.64,1); }
+    @keyframes swatPaw {
+      0%,100% { transform: translateY(0) rotate(0deg); }
+      35%     { transform: translateY(-13px) rotate(-32deg); }
+      68%     { transform: translateY(2px) rotate(14deg); }
+    }
+    .state-playing .eye-eyelid-fill { transform: translateY(-9px); }
+    .state-playing .eye-lid-line    { opacity: 0; }
+    .state-playing .mouth-n         { opacity: 0; }
+    .state-playing .mouth-o         { opacity: 1; }
+    .state-playing #whiskers line   { opacity: 0.75; }
+    .toy-ball { opacity: 0; }
+    .state-playing .toy-ball { animation: toyPlay 0.75s ease-in-out; }
+    @keyframes toyPlay {
+      0%   { opacity:0; transform: translate(148px,62px) scale(0.2); }
+      38%  { opacity:1; transform: translate(164px,48px) scale(1); }
+      72%  { opacity:1; transform: translate(175px,58px) scale(1.12); }
+      100% { opacity:0; transform: translate(168px,62px) scale(0.2); }
+    }
+
+    /* — SURPRISED: momentary wide eyes — */
+    .state-surprised .eye-normal-grp { opacity: 0; }
+    .state-surprised .eye-surprised  { opacity: 1; }
+    .state-surprised .eye-lid-line   { opacity: 0; }
+    .state-surprised #cat-root       { animation: surpriseJolt 0.28s cubic-bezier(0.34,1.56,0.64,1); }
+    @keyframes surpriseJolt {
+      0%,100% { transform: scale(1); }
+      45%     { transform: scale(1.04,0.96); }
+    }
+    .state-surprised #ear-l { animation: surpriseEarL 0.28s cubic-bezier(0.34,1.56,0.64,1); }
+    .state-surprised #ear-r { animation: surpriseEarR 0.28s cubic-bezier(0.34,1.56,0.64,1); }
+    @keyframes surpriseEarL {
+      0%,100% { transform: rotate(0deg); }
+      50%     { transform: rotate(-16deg); }
+    }
+    @keyframes surpriseEarR {
+      0%,100% { transform: rotate(0deg); }
+      50%     { transform: rotate(16deg); }
+    }
+
+    /* — FRUSTRATED: backspace deletion annoyance — */
+    .state-frustrated .eye-eyelid-fill { transform: translateY(3px); }
+    .state-frustrated .eye-lid-line    { transform: translateY(2.5px); opacity: 1; }
+    .state-frustrated #ear-l           { transform: rotate(-18deg); }
+    .state-frustrated #ear-r           { transform: rotate(18deg); }
+    .state-frustrated .mouth-n         { opacity: 0; }
+    .state-frustrated .mouth-s         { opacity: 1; }
+    .state-frustrated #whiskers line   { opacity: 0.95; }
+    .state-frustrated #cat-root        { animation: huffJolt 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+    @keyframes huffJolt {
+      0%, 100% { transform: scale(1); }
+      45%      { transform: scale(1.06, 0.93); }
+    }
+
+    /* — WALKING: casual stroll across search bar — */
+    .state-walking #arm-l { animation: walkStepL 0.36s ease-in-out infinite; }
+    .state-walking #arm-r { animation: walkStepR 0.36s ease-in-out infinite 0.18s; }
+    .state-walking #cat-root { animation: walkBob 0.36s ease-in-out infinite; }
+    .state-walking #tail { animation: tailWag 1.2s ease-in-out infinite; }
+
+    @keyframes walkStepL {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50%      { transform: translateY(-4px) rotate(-6deg); }
+    }
+    @keyframes walkStepR {
+      0%, 100% { transform: translateY(-4px) rotate(6deg); }
+      50%      { transform: translateY(0px) rotate(0deg); }
+    }
+    @keyframes walkBob {
+      0%, 100% { transform: translateY(0px); }
+      50%      { transform: translateY(-1.8px); }
+    }
+
+    /* — SLEEPING — */
+    .state-sleeping .eye-normal-grp { opacity: 0; }
+    .state-sleeping .eye-lid-line   { opacity: 0; }
+    .state-sleeping .eye-sleep      { opacity: 1; }
+    .state-sleeping .mouth-n        { opacity: 0; }
+    .state-sleeping .mouth-s        { opacity: 1; }
+    .state-sleeping #tail           { animation-duration: 6s; }
+    .state-sleeping #arms           { transform: translateY(5px); }
+    .state-sleeping #whiskers line  { opacity: 0.18; }
+
+    /* Zzz group */
+    .zzz-group { opacity: 0; pointer-events: none; transition: opacity 0.5s ease; }
+    .state-sleeping .zzz-group { opacity: 1; }
+    .zzz-item { font-weight: 800; fill: var(--zzz-fill); opacity: 0; font-family: -apple-system,sans-serif; }
+    .state-sleeping .zzz-1 { animation: floatZ 2.8s ease-in-out infinite 0.0s; }
+    .state-sleeping .zzz-2 { animation: floatZ 2.8s ease-in-out infinite 0.9s; }
+    .state-sleeping .zzz-3 { animation: floatZ 2.8s ease-in-out infinite 1.8s; }
+    @keyframes floatZ {
+      0%   { opacity:0; transform: translateY(0) scale(0.7); }
+      35%  { opacity:0.82; }
+      100% { opacity:0; transform: translateY(-26px) translateX(9px) scale(1.18); }
+    }
+
+    /* ── Search Bar ── */
+    .search-wrapper {
+      width: 100%; position: relative; z-index: 1;
+      transition: transform 0.16s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .search-wrapper.submitting { transform: scale(0.97); }
+    .search-form {
+      width: 100%; position: relative; display: flex; align-items: center;
+      background: var(--search-bg);
+      border-radius: 999px;
+      box-shadow: var(--search-shadow);
+      transition: box-shadow 0.22s ease;
+    }
+    .search-form:focus-within {
+      box-shadow: var(--search-focus-shadow);
+    }
+    .ghost-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      height: 52px;
+      padding: 0 24px 0 50px;
+      display: flex; align-items: center;
+      font-size: 16px; font-family: inherit;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+      white-space: pre;
+    }
+    .ghost-typed {
+      color: transparent;
+      user-select: none;
+    }
+    .ghost-hint {
+      color: var(--placeholder);
+      opacity: 0.5;
+      font-weight: 400;
+      user-select: none;
+    }
+    .search-input {
+      width: 100%; height: 52px;
+      background: transparent !important;
+      border: none !important;
+      border-radius: 999px;
+      padding: 0 24px 0 50px;
+      font-size: 16px; font-family: inherit; color: var(--text);
+      outline: none !important;
+      outline-style: none !important;
+      -webkit-appearance: none;
+      appearance: none;
+      position: relative;
+      z-index: 2;
+    }
+    .search-input::placeholder { color: var(--placeholder); font-weight: 400; }
+    .search-input:focus, .search-input:focus-visible, .search-input:active {
+      outline: none !important;
+      outline-offset: 0 !important;
+      border: none !important;
+    }
+    .search-icon {
+      position: absolute; left: 20px; width: 18px; height: 18px;
+      fill: none; stroke: var(--placeholder); stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+      pointer-events: none; transition: stroke 0.2s;
+    }
+    .search-input:focus ~ .search-icon { stroke: var(--text); }
+    .shortcut-badge {
+      position: absolute; right: 18px;
+      background: var(--bg); border: 1px solid var(--search-border);
+      color: var(--placeholder); border-radius: 6px;
+      padding: 2px 7px; font-size: 12px; font-weight: 500;
+      pointer-events: none; transition: opacity 0.2s;
+    }
+    .search-input:focus ~ .shortcut-badge { opacity: 0; }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <div class="cat-wrapper" id="catWrapper">
+      <div class="miau-bubble" id="miauBubble">
+        <span id="miauBubbleText">miau~</span>
+        <div class="thought-tail">
+          <span class="thought-dot dot-1"></span>
+          <span class="thought-dot dot-2"></span>
+          <span class="thought-dot dot-3"></span>
+        </div>
+      </div>
+
+      <svg class="cat-svg" id="catSvg" viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <clipPath id="eye-clip-l">
+            <circle cx="74" cy="38" r="7.5"/>
+          </clipPath>
+          <clipPath id="eye-clip-r">
+            <circle cx="126" cy="38" r="7.5"/>
+          </clipPath>
+        </defs>
+
+        <!-- Floating Zzz -->
+        <g class="zzz-group">
+          <text class="zzz-item zzz-1" x="150" y="22" font-size="9.5">z</text>
+          <text class="zzz-item zzz-2" x="158" y="13" font-size="11.5">z</text>
+          <text class="zzz-item zzz-3" x="168" y="4"  font-size="14">Z</text>
+        </g>
+
+        <!-- Toy Ball -->
+        <circle class="toy-ball cf" cx="0" cy="0" r="5.5"/>
+
+        <!-- ══ CAT ROOT (breathing) ══ -->
+        <g id="cat-root">
+
+          <!-- ── TAIL (filled path, tapers to tip) ── -->
+          <g id="tail">
+            <path class="cf" d="
+              M 40,47
+              C 27,43 16,28 22,15
+              C 23,12 27,11 29,14
+              C 28,21 33,38 42,50
+              Z
+            "/>
+          </g>
+
+          <!-- ══ HEAD ASSEMBLY: body + ears + face all tilt together ══ -->
+          <g id="catHead">
+
+            <!-- ── BODY LOAF ── -->
+            <g id="body">
+              <rect class="cf" x="26" y="23" width="148" height="38" rx="20"/>
+            </g>
+
+            <!-- EARS: bases extend down to y=26 so they overlap deep inside body rect (zero floating gap) -->
+            <g id="ears">
+              <g id="ear-l">
+                <path class="cf" d="M 44,26 C 42,12 52,2 62,3 C 71,4 73,16 72,26 Z"/>
+                <path class="ie" d="M 48,25 C 47,14 54,6 61,7 C 67,8 68,17 67,25 Z"/>
+              </g>
+              <g id="ear-r">
+                <path class="cf" d="M 128,26 C 127,16 129,4 138,3 C 148,2 158,12 156,26 Z"/>
+                <path class="ie" d="M 133,25 C 132,17 133,8 139,7 C 146,6 153,14 152,25 Z"/>
+              </g>
+            </g>
+
+            <!-- WHISKERS: 3 each side, natural angles -->
+            <g id="whiskers">
+              <line x1="70" y1="37" x2="42" y2="32"/>
+              <line x1="70" y1="41" x2="41" y2="41"/>
+              <line x1="70" y1="45" x2="42" y2="50"/>
+              <line x1="130" y1="37" x2="158" y2="32"/>
+              <line x1="130" y1="41" x2="159" y2="41"/>
+              <line x1="130" y1="45" x2="158" y2="50"/>
+            </g>
+
+            <!-- ── LEFT EYE ── -->
+            <g id="eye-l">
+              <g class="eye-normal-grp">
+                <circle class="eb" cx="74" cy="38" r="7.5"/>
+                <g clip-path="url(#eye-clip-l)">
+                  <g class="pupil-grp">
+                    <circle class="ep" cx="74" cy="38" r="4.3"/>
+                    <circle fill="var(--eye-bg)" cx="72.0" cy="35.8" r="1.5"/>
+                    <circle fill="var(--eye-bg)" cx="75.8" cy="40.0" r="0.8" opacity="0.85"/>
+                  </g>
+                  <rect class="cf eye-eyelid-fill" x="62" y="20" width="24" height="18"/>
+                </g>
+              </g>
+              <path class="cfs eye-lid-line" d="M 66.5,35.5 Q 74,32.2 81.5,35.5" stroke-width="1.4" stroke-linecap="round"/>
+              <path class="eye-happy" d="M 66.8,39 Q 74,31.8 81.2,39" stroke="var(--cat-detail)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+              <path class="eye-sleep" d="M 67,37 Q 74,43.2 81,37" stroke="var(--cat-detail)" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+              <g class="eye-surprised">
+                <circle class="eb" cx="74" cy="38" r="8.2"/>
+                <circle class="ep" cx="74" cy="38" r="5.2"/>
+                <circle fill="var(--eye-bg)" cx="71.8" cy="35.2" r="1.8"/>
+                <circle fill="var(--eye-bg)" cx="76.0" cy="40.0" r="0.9" opacity="0.85"/>
+              </g>
+            </g>
+
+            <!-- ── RIGHT EYE ── -->
+            <g id="eye-r">
+              <g class="eye-normal-grp">
+                <circle class="eb" cx="126" cy="38" r="7.5"/>
+                <g clip-path="url(#eye-clip-r)">
+                  <g class="pupil-grp">
+                    <circle class="ep" cx="126" cy="38" r="4.3"/>
+                    <circle fill="var(--eye-bg)" cx="124.0" cy="35.8" r="1.5"/>
+                    <circle fill="var(--eye-bg)" cx="127.8" cy="40.0" r="0.8" opacity="0.85"/>
+                  </g>
+                  <rect class="cf eye-eyelid-fill" x="114" y="20" width="24" height="18"/>
+                </g>
+              </g>
+              <path class="cfs eye-lid-line" d="M 118.5,35.5 Q 126,32.2 133.5,35.5" stroke-width="1.4" stroke-linecap="round"/>
+              <path class="eye-happy" d="M 118.8,39 Q 126,31.8 133.2,39" stroke="var(--cat-detail)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+              <path class="eye-sleep" d="M 119,37 Q 126,43.2 133,37" stroke="var(--cat-detail)" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+              <g class="eye-surprised">
+                <circle class="eb" cx="126" cy="38" r="8.2"/>
+                <circle class="ep" cx="126" cy="38" r="5.2"/>
+                <circle fill="var(--eye-bg)" cx="123.8" cy="35.2" r="1.8"/>
+                <circle fill="var(--eye-bg)" cx="128.0" cy="40.0" r="0.9" opacity="0.85"/>
+              </g>
+            </g>
+
+            <!-- NOSE: tiny heart shape -->
+            <g id="nose">
+              <path class="cd" d="
+                M 100,44.6
+                C 100,43.9 99.4,43.2 98.6,43.2
+                C 97.5,43.2 97.0,44.3 98.5,45.7
+                Q 100,47.1 101.5,45.7
+                C 103.0,44.3 102.5,43.2 101.4,43.2
+                C 100.6,43.2 100,43.9 100,44.6 Z
+              "/>
+            </g>
+
+            <!-- MOUTH variants -->
+            <g id="mouth">
+              <!-- Normal: double-curve w -->
+              <path class="cs mouth-n"
+                d="M 93,50.5 Q 96.5,54 100,50.5 Q 103.5,54 107,50.5"
+                stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- Happy: wide smile arc -->
+              <path class="cs mouth-h"
+                d="M 91,49.5 Q 100,57 109,49.5"
+                stroke-width="1.35" stroke-linecap="round"/>
+              <!-- Sleeping: flat neutral -->
+              <path class="cs mouth-s"
+                d="M 96,51.5 Q 100,52 104,51.5"
+                stroke-width="1.1" stroke-linecap="round"/>
+              <!-- Surprised/playing: small open oval -->
+              <ellipse class="cs mouth-o" cx="100" cy="52" rx="3.5" ry="2.5"
+                stroke-width="1.1"/>
+            </g>
+
+          </g><!-- /catHead -->
+
+          <!-- ── ARMS / PAWS (dangling over search bar with full toe bean detail) ── -->
+          <g id="arms">
+            <g id="arm-l">
+              <rect class="cf" x="52" y="48" width="26" height="28" rx="13"/>
+              <!-- Main palm pad + 3 toe beans -->
+              <ellipse class="cd" cx="65" cy="67" rx="4.8" ry="3.2"/>
+              <circle class="cd" cx="58" cy="71" r="2.0"/>
+              <circle class="cd" cx="65" cy="73" r="2.2"/>
+              <circle class="cd" cx="72" cy="71" r="2.0"/>
+            </g>
+            <g id="arm-r">
+              <rect class="cf" x="122" y="48" width="26" height="28" rx="13"/>
+              <!-- Main palm pad + 3 toe beans -->
+              <ellipse class="cd" cx="135" cy="67" rx="4.8" ry="3.2"/>
+              <circle class="cd" cx="128" cy="71" r="2.0"/>
+              <circle class="cd" cx="135" cy="73" r="2.2"/>
+              <circle class="cd" cx="142" cy="71" r="2.0"/>
+            </g>
+          </g>
+
+        </g><!-- /cat-root -->
+      </svg>
+    </div>
+
+    <!-- ── Search Bar ── -->
+    <div class="search-wrapper" id="searchWrapper">
+      <form class="search-form" id="searchForm">
+        <div class="ghost-overlay" id="ghostOverlay">
+          <span class="ghost-typed" id="ghostTyped"></span><span class="ghost-hint" id="ghostHint"></span>
+        </div>
+        <input type="text" class="search-input" id="searchInput"
+          placeholder="Search Google or press / to focus"
+          autocomplete="off" autofocus/>
+        <svg class="search-icon" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"/>
+          <line x1="16.5" y1="16.5" x2="21" y2="21"/>
+        </svg>
+        <span class="shortcut-badge">/</span>
+      </form>
+    </div>
+  </div>
+
+  <script src="newtab.js"></script>
+</body>
+</html>

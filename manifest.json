@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Cat Search Tab",
+  "version": "1.0.0",
+  "description": "A minimalist cute Chrome new tab extension with an interactive cat on the search bar.",
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  }
+}
