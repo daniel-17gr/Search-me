@@ -9,7 +9,7 @@
   const searchInput = document.getElementById('searchInput');
 
   // ── State Machine ──────────────────────────────────────────
-  const ALL_STATES = ['awake','typing','happy','playing','sleeping','surprised','walking','frustrated'];
+  const ALL_STATES = ['awake','typing','happy','playing','sleeping','surprised','walking','frustrated','hover'];
   let currentState  = 'idle';
   let idleTimer     = null;
   let returnTimer   = null;
@@ -38,8 +38,9 @@
   // ── Casual Walking Routine ─────────────────────────────────
   function stopWalking() {
     clearTimeout(stopWalkTimer);
-    app.style.setProperty('--walk-x', '0px');
-    app.style.setProperty('--walk-scale', '1');
+    clearInterval(walkTimer);
+    walkTimer = null;
+    catWrapper.style.setProperty('--walk-x', '0px');
     currentWalkX = 0;
   }
 
@@ -56,9 +57,9 @@
     const distance = Math.abs(nextX - currentWalkX);
     const duration = Math.max(1.1, distance / 85);
 
+    // Set --walk-x on catWrapper directly (where the CSS transform reads it)
     catWrapper.style.transition = `transform ${duration}s cubic-bezier(0.25, 1, 0.5, 1)`;
-    app.style.setProperty('--walk-x', `${nextX}px`);
-    app.style.setProperty('--walk-scale', '1'); // No flip rotation
+    catWrapper.style.setProperty('--walk-x', `${nextX}px`);
 
     currentWalkX = nextX;
     setState('walking');
@@ -106,7 +107,7 @@
       osc.frequency.exponentialRampToValueAtTime(860, t + 0.08);
       osc.frequency.exponentialRampToValueAtTime(500, t + 0.27);
       gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.02, t + 0.04);
+      gain.gain.linearRampToValueAtTime(0.09, t + 0.04);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.27);
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -218,7 +219,7 @@
 
   function updateEyeTracking() {
     if (currentState === 'sleeping' || currentState === 'happy' ||
-        currentState === 'surprised' || currentState === 'walking') return;
+        currentState === 'surprised' || currentState === 'walking' || currentState === 'hover') return;
 
     if (currentState === 'typing' && searchInput.value.length > 0) {
       const shift = Math.min(searchInput.value.length * 1.0, 9);
@@ -249,7 +250,37 @@
     app.style.setProperty('--head-tilt','0deg');
   }
 
-  // ── Cat Click / Touch ──────────────────────────────────────
+  // ── Cat Mouse Hover Emotion & Click ──────────────────────
+  const hoverPhrases = [
+    'purr~ ♡',
+    'nya! ✨',
+    '好き！ ♡',
+    'hello! 🐾',
+    'へへっ ♡',
+    '撫でて~ 💖',
+    'miau ♡',
+    'ごろごろ~ ✨',
+    '好き好き ♡'
+  ];
+
+  catWrapper.addEventListener('mouseenter', () => {
+    resetIdle();
+    if (currentState === 'typing' || currentState === 'playing' ||
+        currentState === 'surprised' || currentState === 'frustrated') return;
+
+    stopWalking();
+    setState('hover');
+    showBubble(hoverPhrases[Math.floor(Math.random() * hoverPhrases.length)], true);
+    playMeow();
+  });
+
+  catWrapper.addEventListener('mouseleave', () => {
+    resetIdle();
+    if (currentState === 'hover') {
+      setState(getBaseState());
+    }
+  });
+
   catWrapper.addEventListener('click', e => {
     e.stopPropagation();
     resetIdle();
@@ -416,13 +447,13 @@
     if (!alpha) return null;
     const candidates = [];
 
-    // Pass 1: Domain prefix ("you" → youtube.com)
+    // Pass 1: Domain / Clean URL prefix ("you" → youtube.com, "git" → github.com)
     for (const s of SITE_DATABASE) {
       const clean = s.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-      const dom = clean.split('/')[0];
-      const hint = computeGhostHint(raw, clean);
+      const dom   = clean.split('/')[0];
+      const hint  = computeGhostHint(raw, clean);
       if (hint) {
-        candidates.push({ ghost: clean, hint, url: s.url, len: dom.length, priority: 1 });
+        candidates.push({ ghost: clean, hint, url: s.url, len: dom.length });
       }
     }
     if (candidates.length > 0) {
@@ -430,12 +461,11 @@
       return candidates[0];
     }
 
-    // Pass 2: Title prefix ("Fire" → console.firebase.google.com)
+    // Pass 2: Title prefix only ("gem" → Gemini AI, "luc" → Lucide Icons)
     for (const s of SITE_DATABASE) {
-      const hint = computeGhostHint(raw, s.title);
-      if (hint) {
-        const clean = s.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        candidates.push({ ghost: clean, hint, url: s.url, len: s.title.length, priority: 2 });
+      const hintTitle = computeGhostHint(raw, s.title);
+      if (hintTitle) {
+        candidates.push({ ghost: s.title, hint: hintTitle, url: s.url, len: s.title.length });
       }
     }
     if (candidates.length > 0) {
@@ -443,13 +473,26 @@
       return candidates[0];
     }
 
-    // Pass 3: Keyword ("deploy" → vercel.com)
+    // Pass 3: Keyword match ("deploy" → vercel.com, "firebase" → console.firebase.google.com)
+    // Exact keyword match scores 0, prefix match scores 1 — exact wins
+    const keyMatches = [];
     for (const s of SITE_DATABASE) {
-      if (s.keys.some(k => k.replace(/[^a-z0-9]/g, '').startsWith(alpha))) {
-        const clean = s.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-        return { url: s.url, ghost: clean, hint: clean };
+      for (const k of s.keys) {
+        const kAlpha = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (kAlpha === alpha) {
+          keyMatches.push({ url: s.url, score: 0 });
+          break;
+        } else if (kAlpha.startsWith(alpha)) {
+          keyMatches.push({ url: s.url, score: 1 });
+          break;
+        }
       }
     }
+    if (keyMatches.length > 0) {
+      keyMatches.sort((a, b) => a.score - b.score);
+      return { ghost: '', hint: '', url: keyMatches[0].url };
+    }
+
     return null;
   }
 
@@ -474,7 +517,7 @@
   }
 
   function runAutocomplete(raw) {
-    if (!raw) { clearGhost(); return; }
+    if (!raw || !raw.trim()) { clearGhost(); return; }
 
     // 1. Search history first (most relevant to user)
     const hist = findHistoryMatch(raw);
@@ -485,8 +528,8 @@
 
     // 2. Site database
     const site = findSiteMatch(raw);
-    if (site && site.hint) {
-      setGhost(raw, site.hint, site.ghost, site.url);
+    if (site) {
+      setGhost(raw, site.hint || '', site.ghost || '', site.url || '');
       return;
     }
 
@@ -509,11 +552,18 @@
   }
 
   function applyGoogleHint(raw, suggestion) {
-    const hint = computeGhostHint(raw, suggestion);
-    if (hint) {
-      setGhost(raw, hint, suggestion,
+    // Try inline prefix match first ("hel" → "lo world" as ghost)
+    const prefixHint = computeGhostHint(raw, suggestion);
+    if (prefixHint) {
+      setGhost(raw, prefixHint, suggestion,
         `https://google.com/search?q=${encodeURIComponent(suggestion)}`);
+      return;
     }
+    // Fallback: show the full suggestion as a trailing hint after a space
+    // e.g. user typed "js fra", suggest "javascript framework"
+    const trailingHint = ' → ' + suggestion;
+    setGhost(raw, trailingHint, raw + trailingHint,
+      `https://google.com/search?q=${encodeURIComponent(suggestion)}`);
   }
 
   function navigateTo(query, url) {
@@ -551,7 +601,10 @@
     if (currentState !== 'happy' && currentState !== 'playing' && currentState !== 'frustrated') {
       setState(curLen > 0 ? 'typing' : 'awake');
     }
-    if (currentState !== 'frustrated') miauBubble.classList.remove('show');
+    // Only hide bubble when not in a special state that just showed one
+    if (currentState !== 'frustrated' && currentState !== 'happy' && currentState !== 'playing') {
+      miauBubble.classList.remove('show');
+    }
 
     clearTimeout(suggestDebounce);
     suggestDebounce = setTimeout(() => {

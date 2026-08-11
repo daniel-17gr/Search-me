@@ -1,9 +1,24 @@
 {
   "manifest_version": 3,
-  "name": "Cat Search Tab",
+  "name": "Search Me",
   "version": "1.0.0",
-  "description": "A minimalist cute Chrome new tab extension with an interactive cat on the search bar.",
+  "description": "A minimalist cute Chrome new tab extension with an interactive cat and smart inline autocomplete.",
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   "chrome_url_overrides": {
     "newtab": "newtab.html"
-  }
+  },
+  "host_permissions": [
+    "https://suggestqueries.google.com/*"
+  ]
 }
