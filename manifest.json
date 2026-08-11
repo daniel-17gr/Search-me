@@ -5,12 +5,15 @@
   "description": "A minimalist cute Chrome new tab extension with an interactive cat and smart inline autocomplete.",
   "icons": {
     "16":  "icons/icon16.png",
+    "32":  "icons/icon32.png",
     "48":  "icons/icon48.png",
     "128": "icons/icon128.png"
   },
   "action": {
+    "default_title": "Search Me",
     "default_icon": {
       "16":  "icons/icon16.png",
+      "32":  "icons/icon32.png",
       "48":  "icons/icon48.png",
       "128": "icons/icon128.png"
     }
@@ -18,6 +21,13 @@
   "chrome_url_overrides": {
     "newtab": "newtab.html"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "storage",
+    "clipboardRead"
+  ],
   "host_permissions": [
     "https://suggestqueries.google.com/*"
   ]

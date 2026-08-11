@@ -6,7 +6,9 @@
   const miauBubble  = document.getElementById('miauBubble');
   const searchWrapper = document.getElementById('searchWrapper');
   const searchForm  = document.getElementById('searchForm');
+  const searchReflection = document.getElementById('searchReflection');
   const searchInput = document.getElementById('searchInput');
+  const shortcutsRow = document.getElementById('shortcutsRow');
 
   // ── State Machine ──────────────────────────────────────────
   const ALL_STATES = ['awake','typing','happy','playing','sleeping','surprised','walking','frustrated','hover'];
@@ -24,6 +26,7 @@
   function setState(s) {
     if (currentState === s) return;
     ALL_STATES.forEach(x => app.classList.remove('state-' + x));
+    if (s !== 'playing') app.classList.remove('kick-left', 'kick-right');
     if (s !== 'idle') app.classList.add('state-' + s);
     currentState = s;
   }
@@ -199,10 +202,8 @@
     }
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
-      if (document.activeElement !== searchInput) {
-        stopWalking();
-        setState('sleeping');
-      }
+      stopWalking();
+      setState('sleeping');
     }, 9000);
   }
 
@@ -221,6 +222,18 @@
     if (currentState === 'sleeping' || currentState === 'happy' ||
         currentState === 'surprised' || currentState === 'walking' || currentState === 'hover') return;
 
+    let targetX = lastMouseX;
+    let targetY = lastMouseY;
+
+    // Track active falling/bouncing physics ball if present
+    if (typeof activeBalls !== 'undefined' && activeBalls.length > 0) {
+      const active = activeBalls.find(b => !b.settled) || activeBalls[0];
+      if (active) {
+        targetX = active.x;
+        targetY = active.y;
+      }
+    }
+
     if (currentState === 'typing' && searchInput.value.length > 0) {
       const shift = Math.min(searchInput.value.length * 1.0, 9);
       app.style.setProperty('--eye-x', shift + 'px');
@@ -232,8 +245,8 @@
     const rect   = catSvg.getBoundingClientRect();
     const cx     = rect.left + rect.width  / 2;
     const cy     = rect.top  + rect.height / 2;
-    const dx     = lastMouseX - cx;
-    const dy     = lastMouseY - cy;
+    const dx     = targetX - cx;
+    const dy     = targetY - cy;
 
     const eyeX   = Math.max(-5,   Math.min(5,   dx / 38));
     const eyeY   = Math.max(-3.5, Math.min(3.5, dy / 52));
@@ -251,17 +264,7 @@
   }
 
   // ── Cat Mouse Hover Emotion & Click ──────────────────────
-  const hoverPhrases = [
-    'purr~ ♡',
-    'nya! ✨',
-    '好き！ ♡',
-    'hello! 🐾',
-    'へへっ ♡',
-    '撫でて~ 💖',
-    'miau ♡',
-    'ごろごろ~ ✨',
-    '好き好き ♡'
-  ];
+  const hoverPhrases = ['miau~', 'nya', 'purr..', 'なに？', 'ooh!'];
 
   catWrapper.addEventListener('mouseenter', () => {
     resetIdle();
@@ -271,7 +274,6 @@
     stopWalking();
     setState('hover');
     showBubble(hoverPhrases[Math.floor(Math.random() * hoverPhrases.length)], true);
-    playMeow();
   });
 
   catWrapper.addEventListener('mouseleave', () => {
@@ -540,15 +542,16 @@
       return;
     }
 
-    // 4. Fetch Google suggest
-    fetch(`https://suggestqueries.google.com/complete/search?client=chrome&q=${encodeURIComponent(raw)}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d && d[1] && d[1][0]) {
-          suggestCache.set(key, d[1][0]);
-          if (searchInput.value === raw) applyGoogleHint(raw, d[1][0]);
+    // 4. Fetch Google suggest via Service Worker (No CORS restrictions!)
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ action: 'fetchSuggestions', query: raw }, res => {
+        if (res && res.success && res.data && res.data[1] && res.data[1][0]) {
+          const topMatch = res.data[1][0];
+          suggestCache.set(key, topMatch);
+          applyGoogleHint(raw, topMatch);
         }
-      }).catch(() => {});
+      });
+    }
   }
 
   function applyGoogleHint(raw, suggestion) {
@@ -660,18 +663,588 @@
   window.addEventListener('keydown', e => {
     resetIdle();
     if (e.key === '/' && document.activeElement !== searchInput) {
+      if (settingsModal && settingsModal.classList.contains('open')) return;
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
       e.preventDefault();
       searchInput.focus();
     }
   });
 
-  // ── Passive Listeners ─────────────────────────────────────
+  // ── Passive Listeners & 3D Parallax ───────────────────────
   ['mousedown', 'touchstart', 'scroll'].forEach(evt =>
     window.addEventListener(evt, resetIdle, { passive: true })
   );
+
+  // ── High-Performance Smooth Lerped 3D Parallax ──────────────
+  let targetMouseX = 0, targetMouseY = 0;
+  let currentMouseX = 0, currentMouseY = 0;
+
+  window.addEventListener('mousemove', e => {
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    targetMouseX = (e.clientX - cx) / cx;
+    targetMouseY = (e.clientY - cy) / cy;
+  }, { passive: true });
+
+  function updateParallax() {
+    currentMouseX += (targetMouseX - currentMouseX) * 0.12;
+    currentMouseY += (targetMouseY - currentMouseY) * 0.12;
+
+    if (Math.abs(targetMouseX - currentMouseX) > 0.0005 || Math.abs(targetMouseY - currentMouseY) > 0.0005) {
+      if (searchWrapper) {
+        searchWrapper.style.transform = `translate(${currentMouseX * 7}px, ${currentMouseY * 4}px)`;
+      }
+      if (shortcutsRow) {
+        shortcutsRow.style.transform = `translate(${currentMouseX * 12}px, ${currentMouseY * 7}px)`;
+      }
+    }
+  }
+
+  // ── Dynamic Shortcuts & Settings Modal Engine ──────────────
+  const DEFAULT_SHORTCUTS = [
+    { title: 'youtube', url: 'https://youtube.com' },
+    { title: 'x',       url: 'https://x.com' },
+    { title: 'gmail',   url: 'https://mail.google.com' },
+    { title: 'github',  url: 'https://github.com' },
+    { title: 'gemini',  url: 'https://gemini.google.com' }
+  ];
+
+  const settingsBtn          = document.getElementById('settingsBtn');
+  const settingsModal        = document.getElementById('settingsModal');
+  const modalCloseBtn        = document.getElementById('modalCloseBtn');
+  const addShortcutForm      = document.getElementById('addShortcutForm');
+  const newShortcutUrl       = document.getElementById('newShortcutUrl');
+  const newShortcutTitle     = document.getElementById('newShortcutTitle');
+  const shortcutsManageList  = document.getElementById('shortcutsManageList');
+  const modalResetBtn        = document.getElementById('modalResetBtn');
+
+  let currentShortcuts = [];
+
+  function extractDomainTitle(urlStr) {
+    try {
+      let hostname = new URL(urlStr).hostname.replace(/^www\./, '');
+      if (hostname.includes('mail.google.com')) return 'gmail';
+      if (hostname.includes('console.firebase')) return 'firebase';
+      let name = hostname.split('.')[0];
+      return name ? name.toLowerCase() : 'link';
+    } catch (e) {
+      return 'link';
+    }
+  }
+
+  function loadShortcuts() {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['userShortcuts'], res => {
+        currentShortcuts = res.userShortcuts || DEFAULT_SHORTCUTS;
+        renderShortcutsRow();
+      });
+    } else {
+      const stored = localStorage.getItem('userShortcuts');
+      currentShortcuts = stored ? JSON.parse(stored) : DEFAULT_SHORTCUTS;
+      renderShortcutsRow();
+    }
+  }
+
+  function saveShortcuts(list) {
+    currentShortcuts = list;
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ userShortcuts: list });
+    } else {
+      localStorage.setItem('userShortcuts', JSON.stringify(list));
+    }
+    renderShortcutsRow();
+    renderManageList();
+  }
+
+  function renderShortcutsRow() {
+    if (!shortcutsRow) return;
+    shortcutsRow.innerHTML = '';
+
+    currentShortcuts.forEach((sc, idx) => {
+      if (idx > 0) {
+        const dot = document.createElement('span');
+        dot.className = 'shortcut-dot';
+        dot.textContent = '•';
+        shortcutsRow.appendChild(dot);
+      }
+      const a = document.createElement('a');
+      a.href = sc.url;
+      a.className = 'shortcut-link';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = sc.title.toLowerCase();
+      shortcutsRow.appendChild(a);
+    });
+  }
+
+  function renderManageList() {
+    if (!shortcutsManageList) return;
+    shortcutsManageList.innerHTML = '';
+
+    if (currentShortcuts.length === 0) {
+      shortcutsManageList.innerHTML = '<div style="opacity:0.5;font-size:12px;text-align:center;padding:12px;">no shortcut links added yet</div>';
+      return;
+    }
+
+    currentShortcuts.forEach((sc, idx) => {
+      const row = document.createElement('div');
+      row.className = 'shortcut-item-row';
+
+      const info = document.createElement('div');
+      info.className = 'shortcut-item-info';
+
+      const title = document.createElement('div');
+      title.className = 'shortcut-item-title';
+      title.textContent = sc.title.toLowerCase();
+
+      const url = document.createElement('div');
+      url.className = 'shortcut-item-url';
+      url.textContent = sc.url;
+
+      info.appendChild(title);
+      info.appendChild(url);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'shortcut-item-del';
+      delBtn.innerHTML = '&times;';
+      delBtn.title = 'Delete';
+      delBtn.onclick = () => {
+        const updated = currentShortcuts.filter((_, i) => i !== idx);
+        saveShortcuts(updated);
+      };
+
+      row.appendChild(info);
+      row.appendChild(delBtn);
+      shortcutsManageList.appendChild(row);
+    });
+  }
+
+  if (settingsBtn && settingsModal) {
+    settingsBtn.addEventListener('click', () => {
+      renderManageList();
+      settingsModal.classList.add('open');
+    });
+
+    modalCloseBtn.addEventListener('click', () => {
+      settingsModal.classList.remove('open');
+    });
+
+    settingsModal.addEventListener('click', e => {
+      if (e.target === settingsModal) {
+        settingsModal.classList.remove('open');
+      }
+    });
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && settingsModal.classList.contains('open')) {
+        settingsModal.classList.remove('open');
+      }
+    });
+  }
+
+  if (addShortcutForm) {
+    addShortcutForm.addEventListener('submit', e => {
+      e.preventDefault();
+      let rawUrl = newShortcutUrl.value.trim();
+      if (!rawUrl) return;
+
+      if (!/^https?:\/\//i.test(rawUrl)) {
+        rawUrl = 'https://' + rawUrl;
+      }
+
+      let title = newShortcutTitle.value.trim().toLowerCase();
+      if (!title) {
+        title = extractDomainTitle(rawUrl);
+      }
+
+      const updated = [...currentShortcuts, { title, url: rawUrl }];
+      saveShortcuts(updated);
+
+      newShortcutUrl.value = '';
+      newShortcutTitle.value = '';
+    });
+  }
+
+  if (modalResetBtn) {
+    modalResetBtn.addEventListener('click', () => {
+      saveShortcuts(DEFAULT_SHORTCUTS);
+    });
+  }
+
+  loadShortcuts();
+
+  // ── Dynamic Chrome Theme Adaptive Extension Icon ───────────
+  function syncThemeIcon(isDark) {
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ action: 'updateIconTheme', isDark });
+    }
+  }
+
+  const themeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  syncThemeIcon(themeQuery.matches);
+  try {
+    themeQuery.addEventListener('change', e => syncThemeIcon(e.matches));
+  } catch (e) {
+    themeQuery.addListener && themeQuery.addListener(e => syncThemeIcon(e.matches));
+  }
 
   // ── Init ──────────────────────────────────────────────────
   setState('idle');
   resetIdle();
   scheduleCasualWalk();
+
+  // ── Double-Click Physics Balls Engine ──────────────────────
+  const activeBalls = [];
+  const BALL_COLORS = [
+    { bg: 'radial-gradient(circle at 35% 35%, #ff4d4d, #b91c1c)', shadow: 'rgba(255,50,50,0.85)' },
+    { bg: 'radial-gradient(circle at 35% 35%, #38bdf8, #0369a1)', shadow: 'rgba(56,189,248,0.85)' },
+    { bg: 'radial-gradient(circle at 35% 35%, #c084fc, #6b21a8)', shadow: 'rgba(192,132,252,0.85)' },
+    { bg: 'radial-gradient(circle at 35% 35%, #facc15, #a16207)', shadow: 'rgba(250,204,21,0.85)' },
+    { bg: 'radial-gradient(circle at 35% 35%, #4ade80, #15803d)', shadow: 'rgba(74,222,128,0.85)' }
+  ];
+  const ballThoughts = ['ball! 🧶', 'catch! 🐾', 'got it! ⚡', 'nya! ✨', 'ooh! 🎾', 'mine! 🐾', 'かりかり 🦴', 'あそぼ！ 🎾'];
+  let catBusyWithBall = false;
+
+  function triggerSquash(b) {
+    if (!b || !b.el) return;
+    b.rot += (Math.random() - 0.5) * 45;
+  }
+
+  function spawnBall(x, y) {
+    const theme = BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)];
+    const el = document.createElement('div');
+    el.className = 'physics-ball';
+    el.style.background = theme.bg;
+    el.style.boxShadow  = `0 6px 14px ${theme.shadow}, 0 2px 4px rgba(0,0,0,0.2)`;
+    el.style.left       = x + 'px';
+    el.style.top        = y + 'px';
+    document.body.appendChild(el);
+
+    activeBalls.push({
+      el,
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 6.5,
+      vy: Math.random() * -3.5 - 2.5,
+      radius: 11,
+      settled: false,
+      hitCat: false,
+      shadowColor: theme.shadow
+    });
+
+    const thought = ballThoughts[Math.floor(Math.random() * ballThoughts.length)];
+    showBubble(thought, true);
+  }
+
+  let pushTimer = null;
+
+  function processSettledBalls() {
+    if (catBusyWithBall || pushTimer) return;
+    const settled = activeBalls.filter(b => b.settled);
+    if (settled.length === 0) return;
+
+    // Organic random reaction delay before cat decides to push (850ms to 2500ms)
+    const randomDelay = 850 + Math.random() * 1650;
+
+    pushTimer = setTimeout(() => {
+      pushTimer = null;
+      const currentSettled = activeBalls.filter(b => b.settled);
+      if (currentSettled.length === 0) return;
+
+      const searchRect = searchWrapper.getBoundingClientRect();
+      if (document.activeElement === searchInput) {
+        currentSettled.forEach(b => {
+          const dir = b.x > (searchRect.left + searchRect.width / 2) ? 1 : -1;
+          b.settled = false;
+          b.vx = dir * 6.0;
+          b.vy = -1.2;
+        });
+        return;
+      }
+
+      // Sort settled balls by distance to cat center
+      const catRect = catWrapper.getBoundingClientRect();
+      const catCx   = catRect.left + catRect.width / 2;
+      currentSettled.sort((a, b) => Math.abs(a.x - catCx) - Math.abs(b.x - catCx));
+      const targetBall = currentSettled[0];
+
+      // Cat walks toward ball position so her vertical side makes physical contact
+      const pushDir = (targetBall.x >= catCx) ? 1 : -1;
+      const targetWalkX = Math.max(-150, Math.min(150, (targetBall.x - (pushDir * 35)) - (searchRect.left + searchRect.width / 2)));
+
+      catBusyWithBall = true;
+      resetIdle();
+
+      catWrapper.style.transition = `transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)`;
+      catWrapper.style.setProperty('--walk-x', `${targetWalkX}px`);
+      setState('walking');
+
+      setTimeout(() => {
+        // Cat kicks with matching leg (Left leg for left push, Right leg for right push)
+        app.classList.remove('kick-left', 'kick-right');
+        app.classList.add(pushDir === -1 ? 'kick-left' : 'kick-right');
+        setState('playing');
+        const thought = ballThoughts[Math.floor(Math.random() * ballThoughts.length)];
+        showBubble(thought, true);
+
+        currentSettled.forEach(b => {
+          if (Math.abs(b.x - targetBall.x) < 60 || (pushDir === 1 ? b.x >= targetBall.x : b.x <= targetBall.x)) {
+            b.settled = false;
+            b.vx = pushDir * (6.5 + Math.random() * 2.5);
+            b.vy = -1.5;
+          }
+        });
+
+        setTimeout(() => {
+          app.classList.remove('kick-left', 'kick-right');
+          catBusyWithBall = false;
+          const remaining = activeBalls.filter(b => b.settled);
+          if (remaining.length === 0) {
+            setState(getBaseState());
+            catWrapper.style.transition = `transform 0.48s cubic-bezier(0.34, 1.56, 0.64, 1)`;
+            catWrapper.style.setProperty('--walk-x', '0px');
+          } else {
+            processSettledBalls();
+          }
+        }, 450);
+      }, 300);
+    }, randomDelay);
+  }
+
+  function updateBalls() {
+    if (activeBalls.length > 0) {
+      const searchRect = searchWrapper.getBoundingClientRect();
+      const catRect    = catWrapper.getBoundingClientRect();
+      const catCx      = catRect.left + catRect.width / 2;
+
+      // ── Cat AABB Collision Box (Strict Outer Boundary & Vertical Side Pushing) ──
+      const catBox = {
+        left: catCx - 42,
+        right: catCx + 42,
+        top: searchRect.top - 62,
+        bottom: searchRect.top
+      };
+
+      // ── 1. Perfect 2D Elastic Ball-to-Ball Vector Collision ──
+      for (let i = 0; i < activeBalls.length; i++) {
+        for (let j = i + 1; j < activeBalls.length; j++) {
+          const b1 = activeBalls[i];
+          const b2 = activeBalls[j];
+          const bdx = b2.x - b1.x;
+          const bdy = b2.y - b1.y;
+          const bdist = Math.sqrt(bdx * bdx + bdy * bdy);
+          const minDist = b1.radius + b2.radius;
+
+          if (bdist < minDist && bdist > 0) {
+            const nx = bdx / bdist;
+            const ny = bdy / bdist;
+            const tx = -ny;
+            const ty = nx;
+
+            // Separate overlapping balls strictly
+            const overlap = minDist - bdist;
+            b1.x -= nx * overlap * 0.5;
+            b1.y -= ny * overlap * 0.5;
+            b2.x += nx * overlap * 0.5;
+            b2.y += ny * overlap * 0.5;
+
+            // Tangential components
+            const dpTan1 = b1.vx * tx + b1.vy * ty;
+            const dpTan2 = b2.vx * tx + b2.vy * ty;
+
+            // Normal components
+            const dpNorm1 = b1.vx * nx + b1.vy * ny;
+            const dpNorm2 = b2.vx * nx + b2.vy * ny;
+
+            // Swap normal momentum (Conservation of momentum)
+            const m1 = dpNorm2 * 0.96;
+            const m2 = dpNorm1 * 0.96;
+
+            if (dpNorm1 - dpNorm2 > 0) {
+              b1.vx = tx * dpTan1 + nx * m1;
+              b1.vy = ty * dpTan1 + ny * m1;
+              b2.vx = tx * dpTan2 + nx * m2;
+              b2.vy = ty * dpTan2 + ny * m2;
+
+              b1.settled = false;
+              b2.settled = false;
+            }
+          }
+        }
+      }
+
+      // ── Text Field Surface Reflection (Supports MULTIPLE balls, fades instantly when falling below bar) ──
+      if (searchReflection) {
+        const activeReflections = [];
+
+        activeBalls.forEach(b => {
+          // Check vertical distance ABOVE the search bar top
+          const distAbove = searchRect.top - b.y;
+
+          // Ball must be ABOVE or resting on top of the search bar (not fallen below it!)
+          if (distAbove >= -b.radius && distAbove <= 130 &&
+              b.x >= searchRect.left - 15 && b.x <= searchRect.right + 15) {
+
+            const prox = Math.max(0, Math.min(1, 1 - (Math.abs(distAbove) / 130)));
+            if (prox > 0.05) {
+              const percentX = Math.max(0, Math.min(100, ((b.x - searchRect.left) / searchRect.width) * 100));
+              activeReflections.push({
+                percentX: percentX.toFixed(1),
+                color: b.shadowColor,
+                opacity: prox * 0.55
+              });
+            }
+          }
+        });
+
+        if (activeReflections.length > 0) {
+          const gradients = activeReflections.map(r =>
+            `radial-gradient(ellipse 110px 42px at ${r.percentX}% 0%, ${r.color} 0%, rgba(255,255,255,0) 80%)`
+          ).join(', ');
+
+          const maxOpacity = Math.max(...activeReflections.map(r => r.opacity));
+          searchReflection.style.background = gradients;
+          searchReflection.style.opacity = maxOpacity.toFixed(2);
+        } else {
+          searchReflection.style.opacity = '0';
+        }
+      }
+
+      for (let i = activeBalls.length - 1; i >= 0; i--) {
+        const b = activeBalls[i];
+
+        // ── Settled Ball on Search Bar ──
+        if (b.settled) {
+          b.y = searchRect.top - b.radius;
+          b.el.style.left = b.x + 'px';
+          b.el.style.top  = b.y + 'px';
+          b.el.style.transform = 'translate(-50%, -50%)';
+
+          processSettledBalls();
+          continue;
+        }
+
+        // Gravity & Gentle Rolling Friction (b.vx preserves momentum!)
+        b.vy += 0.42;
+        b.vx *= 0.985;
+        b.x  += b.vx;
+        b.y  += b.vy;
+
+        // ── 2. Strict Cat Box Collision & Vertical Side Push (Zero Overlap) ──
+        if (b.x + b.radius > catBox.left &&
+            b.x - b.radius < catBox.right &&
+            b.y + b.radius > catBox.top &&
+            b.y - b.radius < catBox.bottom) {
+
+          const overlapLeft  = (b.x + b.radius) - catBox.left;
+          const overlapRight = catBox.right - (b.x - b.radius);
+          const overlapTop   = (b.y + b.radius) - catBox.top;
+
+          const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop);
+
+          if (minOverlap === overlapTop && b.vy > 0) {
+            // Bounce off top of cat
+            b.y = catBox.top - b.radius;
+            b.vy = -b.vy * 0.38 - 1.2;
+            b.vx += (b.x > catCx) ? 2.5 : -2.5;
+          } else if (minOverlap === overlapLeft) {
+            // Contact with Left Vertical Side -> PUSH LEFT!
+            b.x = catBox.left - b.radius;
+            b.vx = -Math.abs(b.vx || 5.0) - 2.5;
+            b.settled = false;
+          } else if (minOverlap === overlapRight) {
+            // Contact with Right Vertical Side -> PUSH RIGHT!
+            b.x = catBox.right + b.radius;
+            b.vx = Math.abs(b.vx || 5.0) + 2.5;
+            b.settled = false;
+          }
+
+          if (!b.hitCat) {
+            b.hitCat = true;
+            resetIdle();
+            setState('playing');
+            const thought = ballThoughts[Math.floor(Math.random() * ballThoughts.length)];
+            showBubble(thought, true);
+
+            setTimeout(() => {
+              if (currentState === 'playing') setState(getBaseState());
+            }, 700);
+          }
+        }
+
+        // ── 3. Pill Search Bar Collision & Arc Roll-Off ──
+        const barTop = searchRect.top;
+        const cornerR = 26; // Pill radius for 52px height
+        const cxL = searchRect.left + cornerR;
+        const cxR = searchRect.right - cornerR;
+        const cyCenter = barTop + cornerR;
+
+        if (b.y + b.radius >= barTop && b.y - b.radius <= barTop + 45) {
+          // Flat top middle section
+          if (b.x >= cxL && b.x <= cxR) {
+            if (b.y + b.radius >= barTop && b.vy > 0) {
+              b.y = barTop - b.radius;
+              b.vy = -b.vy * 0.16; // Soft realistic bounce
+
+              // Only settle if nearly motionless horizontally and vertically
+              if (Math.abs(b.vx) < 0.08 && Math.abs(b.vy) < 0.1) {
+                b.vy = 0;
+                b.vx = 0;
+                b.settled = true;
+              }
+            }
+          }
+          // Left pill rounded arc roll-off (Natural gravity slide - NO artificial push force!)
+          else if (b.x < cxL) {
+            const cdx = b.x - cxL;
+            const cdy = b.y - cyCenter;
+            const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+            const targetDist = cornerR + b.radius;
+
+            if (cdist < targetDist && b.vy > 0) {
+              const angle = Math.atan2(cdy, cdx);
+              b.x = cxL + targetDist * Math.cos(angle);
+              b.y = cyCenter + targetDist * Math.sin(angle);
+            }
+          }
+          // Right pill rounded arc roll-off (Natural gravity slide - NO artificial push force!)
+          else if (b.x > cxR) {
+            const cdx = b.x - cxR;
+            const cdy = b.y - cyCenter;
+            const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+            const targetDist = cornerR + b.radius;
+
+            if (cdist < targetDist && b.vy > 0) {
+              const angle = Math.atan2(cdy, cdx);
+              b.x = cxR + targetDist * Math.cos(angle);
+              b.y = cyCenter + targetDist * Math.sin(angle);
+            }
+          }
+        }
+
+        // ── 4. Fall Off Screen Bottom ──
+        if (b.y > window.innerHeight + 30) {
+          b.el.remove();
+          activeBalls.splice(i, 1);
+          continue;
+        }
+
+        b.el.style.left = b.x + 'px';
+        b.el.style.top  = b.y + 'px';
+        b.el.style.transform = 'translate(-50%, -50%)';
+      }
+    }
+
+    updateEyeTracking();
+    updateParallax();
+    requestAnimationFrame(updateBalls);
+  }
+
+  window.addEventListener('dblclick', e => {
+    if (e.target !== searchInput) {
+      spawnBall(e.clientX, e.clientY);
+    }
+  });
+
+  requestAnimationFrame(updateBalls);
 })();
